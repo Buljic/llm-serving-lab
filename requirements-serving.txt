@@ -1,0 +1,3 @@
+# Serving stack for the GPU campaign and make smoke.
+# Not needed for tests or the report; install separately.
+vllm==0.10.2
