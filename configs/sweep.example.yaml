@@ -1,0 +1,33 @@
+# Sweep for the single-GPU campaign. Each entry becomes one row in the report.
+# Copy to configs/sweep.yaml and adjust; committed runs used a similar shape.
+shared:
+  model: Qwen/Qwen2.5-7B-Instruct
+  base_url: http://localhost:8000
+  request_count: 300
+  warmup_requests: 10
+  repetitions: 3
+  seed: 11
+  max_concurrent: 16
+  gpu_cost_per_hour_usd: 0.60
+  slo:
+    max_ttft_s: 0.75
+    max_tpot_s: 0.10
+
+runs:
+  - name: load-0.5rps
+    arrival_rate_rps: 0.5
+  - name: load-1rps
+    arrival_rate_rps: 1.0
+  - name: load-2rps
+    arrival_rate_rps: 2.0
+  - name: load-4rps-kv0.9
+    arrival_rate_rps: 4.0
+    # served with --gpu-memory-utilization 0.9 so the KV cache can hold more
+    # concurrent sequences; the flag is set on the server, the runner records
+    # which run used which fraction
+    kv_cache_fraction: 0.9
+  - name: load-4rps-kv0.5
+    arrival_rate_rps: 4.0
+    # same offered load with a smaller KV cache; expect preemption and worse tail
+    kv_cache_fraction: 0.5
+
