@@ -1,0 +1,45 @@
+{
+  "name": "stub-load-1rps",
+  "model": "stub-single-slot",
+  "base_url": "http://localhost:8000",
+  "started_at": "2026-09-02T18:47:00+02:00",
+  "wall_s": 58.302666,
+  "fixture": true,
+  "config": {
+    "name": "stub-load-1rps",
+    "model": "stub-single-slot",
+    "request_count": 24,
+    "arrival_rate_rps": 1.0,
+    "slo": {
+      "max_ttft_s": 0.75,
+      "max_tpot_s": 0.1
+    },
+    "max_concurrent": 8,
+    "warmup_requests": 2,
+    "repetitions": 2,
+    "seed": 11,
+    "class_weights": {
+      "short": 0.5,
+      "medium": 0.3,
+      "long": 0.2
+    },
+    "gpu_cost_per_hour_usd": 0.6,
+    "kv_cache_fraction": null,
+    "device_note": null,
+    "max_tokens_cap": null,
+    "base_url": "http://localhost:8000",
+    "api_key": null,
+    "prompt_file": "prompts/prompts.jsonl"
+  },
+  "environment": {
+    "python": "3.11.16",
+    "platform": "Linux-7.2.11-200.fc44.x86_64-x86_64-with-glibc2.43",
+    "cpu": "AMD Ryzen 9 7900X 12-Core Processor",
+    "cuda": null,
+    "vllm": null,
+    "fixture": true,
+    "gpu": "NVIDIA GeForce RTX 3090",
+    "driver": "615.78.08"
+  },
+  "requests": 48
+}
