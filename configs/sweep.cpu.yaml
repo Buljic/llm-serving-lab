@@ -1,0 +1,34 @@
+# CPU campaign, 2026-10-29. llama3.2:1b served by llama.cpp on 10 CPU cores
+# (CPU-only build, no GPU layers; the GPU stayed under the research lease).
+# The box was shared and loaded during the run (research retrain plus other
+# services), so absolute numbers reflect contention; see REPORT.md.
+# Long prompts are excluded on CPU because their multi-hundred-token answers
+# take minutes at contended CPU speeds.
+shared:
+  model: llama3.2:1b
+  base_url: http://127.0.0.1:11436
+  request_count: 8
+  warmup_requests: 1
+  repetitions: 2
+  seed: 11
+  max_concurrent: 4
+  gpu_cost_per_hour_usd: 0.60
+  device_note: cpu-only llama.cpp, 8 threads, niced, 4 parallel slots, shared box
+  max_tokens_cap: 120
+  class_weights:
+    short: 0.65
+    medium: 0.35
+    long: 0.0
+  slo:
+    max_ttft_s: 20.0
+    max_tpot_s: 2.5
+
+runs:
+  - name: cpu-load-0.1rps
+    arrival_rate_rps: 0.1
+  - name: cpu-load-0.25rps
+    arrival_rate_rps: 0.25
+  - name: cpu-load-0.5rps
+    arrival_rate_rps: 0.5
+  - name: cpu-load-1rps
+    arrival_rate_rps: 1.0

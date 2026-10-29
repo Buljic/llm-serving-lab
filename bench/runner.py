@@ -46,6 +46,8 @@ class RunConfig:
     )
     gpu_cost_per_hour_usd: float | None = None
     kv_cache_fraction: float | None = None
+    device_note: str | None = None
+    max_tokens_cap: int | None = None
     base_url: str = "http://localhost:8000"
     api_key: str | None = None
     prompt_file: str = "prompts/prompts.jsonl"
@@ -72,6 +74,8 @@ class RunConfig:
             raise ConfigError(f"run {self.name}: gpu_cost_per_hour_usd must not be negative")
         if self.kv_cache_fraction is not None and not 0.0 < self.kv_cache_fraction <= 1.0:
             raise ConfigError(f"run {self.name}: kv_cache_fraction must be in (0, 1]")
+        if self.max_tokens_cap is not None and self.max_tokens_cap < 1:
+            raise ConfigError(f"run {self.name}: max_tokens_cap must be at least 1")
 
     def workload(self) -> WorkloadSpec:
         return WorkloadSpec(
@@ -171,10 +175,15 @@ async def _drive_once(
             transport=transport_factory(),
             clock=clock,
         )
+        max_tokens = (
+            prompt.max_tokens
+            if config.max_tokens_cap is None
+            else min(prompt.max_tokens, config.max_tokens_cap)
+        )
         result = client.run(
             request_id=f"{config.name}-r{rep}-{seq}",
             prompt=prompt.prompt,
-            max_tokens=prompt.max_tokens,
+            max_tokens=max_tokens,
             prompt_id=prompt.id,
             arrival_s=(t0 + arrival_offset_s) if virtual else None,
         )

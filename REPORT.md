@@ -10,16 +10,21 @@ part of the curve, where a user would already notice, stays unmeasured.
 
 ## Setup
 
-Target: one OpenAI-compatible server (vLLM) on a single GPU, model class
-7B-instruct, CPU-only client machine. Arrivals are a Poisson process with a
-fixed seed over a committed prompt set with short, medium and long exchanges
-(50/30/20 percent). Each configuration runs a warmup, then three repetitions of
-a fixed request count, and every run records the machine it ran on: GPU,
-driver, CUDA and vLLM versions when those are present.
+Target: one OpenAI-compatible server. The GPU campaign (pending, blocked by
+the research lease) targets vLLM on a single GPU, model class 7B-instruct.
+The CPU campaign below used llama.cpp with llama3.2:1b on 8 cores of a shared
+12-core box. Arrivals are a Poisson process with a fixed seed over a committed
+prompt set with short, medium and long exchanges (50/30/20 percent; the CPU
+campaign excluded the long class and capped answers at 120 tokens). Each
+configuration runs a warmup, then a fixed number of repetitions (three in the
+example sweep, two in the CPU campaign), and every run records the machine it
+ran on: GPU, driver, CUDA and vLLM versions when those are present, plus a
+free-form device note.
 
-SLO for goodput: TTFT at most 0.75 s and TPOT at most 0.10 s per request.
-Cost is computed as GPU-hours times a stated hourly rate, divided by output
-tokens.
+SLO for goodput is stated per campaign: TTFT at most 0.75 s and TPOT at most
+0.10 s for the GPU target; 20 s and 2.5 s for the CPU run, where the numbers
+are CPU-bound. Cost is computed as GPU-hours times a stated hourly rate,
+divided by output tokens.
 
 ## Method
 
@@ -33,10 +38,47 @@ and are not.
 
 ## Results
 
-The table below is generated from `results/fixture/` by `make report`; the
-test suite compares it against a regeneration and fails on drift.
+### A real run: llama3.2:1b on CPU, 2026-10-29
 
-<!-- report-table -->
+The harness has been run against a live model. llama3.2:1b was served by
+llama.cpp on 8 CPU cores of a shared 12-core box (niced, 4 parallel slots,
+CPU-only build; the GPU was under a research lease and was not used). The
+sweep file is `configs/sweep.cpu.yaml`: 4 offered loads from 0.1 to 1.0
+requests per second, 16 requests per configuration with 2 repetitions, the
+seeded Poisson schedule, short and medium prompts with answers capped at 120
+tokens. The SLO was relaxed to 20 s TTFT and 2.5 s TPOT because those are
+CPU numbers, not interactive targets. Raw rows and machine metadata are
+committed under `results/qwen32-1b-cpu/`.
+
+<!-- report-table:results/qwen32-1b-cpu -->
+| run | offered_rps | requests | ttft_p50_ms | ttft_p95_ms | tpot_p50_ms | tpot_p95_ms | output_tokens_per_s | goodput_rps | goodput_fraction | cost_per_million_output_tokens |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| cpu-load-0.1rps | 0.1 | 16 | 84.01 | 324.31 | 76.78 | 107.04 | 8.7 | 0.09 | 1 | 19.13 |
+| cpu-load-0.25rps | 0.25 | 16 | 108.74 | 154.61 | 79.67 | 95.5 | 11.1 | 0.118 | 1 | 15 |
+| cpu-load-0.5rps | 0.5 | 16 | 82.75 | 145.1 | 67.7 | 80.7 | 13.1 | 0.135 | 1 | 12.68 |
+| cpu-load-1rps | 1 | 16 | 104.3 | 145.72 | 79.33 | 89.5 | 11.7 | 0.123 | 1 | 14.2 |
+<!-- /report-table -->
+
+Three things are visible. First, per-request latency barely moves with offered
+load: TTFT p50 stays around 84-108 ms and TPOT around 68-80 ms across all four
+configurations. Second, aggregate throughput plateaus at roughly 12-13 output
+tokens per second, which is the machine's real capacity for this model under
+contention. Third, the wall clock stretches far beyond the arrival window at
+higher loads (the 1 rps configuration offered its 16 requests inside 16
+seconds but took over two minutes to drain). The client concurrency cap of 4
+is why latency stays flat: requests past the cap wait client-side before they
+are even sent, so server-side queueing is masked and the saturation shows up
+in throughput and drain time instead. All 64 requests completed with zero
+errors and every request met the relaxed SLO.
+
+### Pipeline fixture
+
+The same pipeline is also proven on a simulated server, committed under
+`results/fixture/`. The stub owns one serving slot, so queueing behavior
+emerges from the schedule. Its rows are labeled `fixture: true` and are not
+model measurements.
+
+<!-- report-table:results/fixture -->
 | run | offered_rps | requests | ttft_p50_ms | ttft_p95_ms | tpot_p50_ms | tpot_p95_ms | output_tokens_per_s | goodput_rps | goodput_fraction | cost_per_million_output_tokens |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | stub-load-0.5rps | 0.5 | 48 | 259.44 | 4386.13 | 8.33 | 8.33 | 61.5 | 0.304 | 0.625 | 2.71 |
@@ -45,14 +87,11 @@ test suite compares it against a regeneration and fails on drift.
 | stub-load-4rps | 4 | 48 | 9221.77 | 18320.91 | 8.33 | 8.33 | 116 | 0.114 | 0.125 | 1.44 |
 <!-- /report-table -->
 
-Important: these rows come from the single-slot simulated server, not from a
-model. Every `run.json` in the fixture carries `"fixture": true`. What the
-fixture proves is the measurement pipeline: schedule generation, streaming
-capture, aggregation, and report regeneration all run and agree. It also shows
-the shape the real campaign is looking for: as offered load approaches what
-the server can decode, TTFT grows through queueing while TPOT stays flat,
-goodput peaks and then falls, and cost per token stops improving long before
-throughput stops growing.
+The fixture shows the shape the GPU campaign is looking for: as offered load
+approaches what the server can decode, TTFT grows through queueing while TPOT
+stays flat, goodput peaks and then falls, and cost per token stops improving
+long before throughput stops growing. Whether that holds on an actual 7B-class
+model on one consumer GPU is exactly what the pending GPU campaign is for.
 
 ## Mechanism
 
@@ -69,15 +108,21 @@ closed-loop benchmark never measures.
 
 ## Limits
 
-- The fixture is a single-slot server with fixed rates; it models queueing, not
-  batching, preemption, or KV cache eviction. Its absolute numbers are not
-  model behavior.
-- The real campaign has not been run yet. No claim in this report is made
-  about any actual model or GPU.
-- Cost per token depends on the hourly rate assumption (0.60 USD/h here for
-  the fixture), not on measured energy or cloud billing.
-- Percentiles use linear interpolation on modest sample counts (48 requests
-  per run here); p99 on 48 samples is an extrapolation, not a measurement.
+- The CPU campaign used a 1B model on a shared, contended box; its numbers
+  validate the harness, not any serving configuration. The SLO was relaxed to
+  match (20 s TTFT, 2.5 s TPOT).
+- Long prompts were excluded from the CPU campaign because their
+  multi-hundred-token answers take minutes at CPU speeds; the GPU campaign
+  must include them.
+- The client concurrency cap masks server-side queueing at high offered loads;
+  latency percentiles alone understate saturation, which only shows in
+  aggregate throughput and drain time.
+- The GPU campaign with a 7B-class model, continuous batching and KV cache
+  pressure has not been run yet; the research lease on the card decides when.
+- Cost per token uses a stated hourly assumption (0.60 USD/h), not measured
+  energy or cloud billing.
+- Percentiles use linear interpolation on modest sample counts (16 requests
+  per configuration); tails are indicative, not precise.
 
 ## Reproduction
 

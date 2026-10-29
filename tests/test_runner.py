@@ -85,3 +85,36 @@ def test_collect_environment_reports_no_gpu_as_none():
     assert env["python"]
     assert env["platform"]
     assert "fixture" in env
+
+
+class RecordingStubTransport:
+    def __init__(self):
+        self.payloads = []
+
+    def stream(self, payload, arrival_s=None):
+        self.payloads.append(payload)
+        yield json.dumps(
+            {"choices": [{"delta": {"content": "ok"}, "finish_reason": "stop"}], "usage": {"completion_tokens": 1}}
+        )
+        yield "[DONE]"
+
+
+def test_max_tokens_cap_limits_request_budget(tmp_path):
+    recorder = RecordingStubTransport()
+    config = make_config(request_count=3, max_tokens_cap=10)
+    run(config, tmp_path, prompts_path=PROMPTS, transport_factory=lambda: recorder)
+    assert len(recorder.payloads) == 3
+    assert all(p["max_tokens"] == 10 for p in recorder.payloads)
+
+
+def test_max_tokens_cap_never_raises_budget(tmp_path):
+    recorder = RecordingStubTransport()
+    config = make_config(request_count=3, max_tokens_cap=500)
+    run(config, tmp_path, prompts_path=PROMPTS, transport_factory=lambda: recorder)
+    assert all(p["max_tokens"] <= 500 for p in recorder.payloads)
+
+
+def test_max_tokens_cap_must_be_positive(tmp_path):
+    config = make_config(max_tokens_cap=0)
+    with pytest.raises(ConfigError):
+        run(config, tmp_path, prompts_path=PROMPTS, transport_factory=stub_factory())

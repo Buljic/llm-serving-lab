@@ -2,32 +2,51 @@ from pathlib import Path
 
 import pytest
 
-from analysis.report import ROOT, build_table, render_markdown_table
+from analysis.report import ROOT, TABLE_RE, build_table, render_markdown_table
 
 FIXTURE = Path(__file__).resolve().parent.parent / "results" / "fixture"
+CAMPAIGN = Path(__file__).resolve().parent.parent / "results" / "qwen32-1b-cpu"
 REPORT = Path(__file__).resolve().parent.parent / "REPORT.md"
-BEGIN = "<!-- report-table -->"
-END = "<!-- /report-table -->"
+README = Path(__file__).resolve().parent.parent / "README.md"
 
 
-def embedded_table() -> str:
-    text = REPORT.read_text(encoding="utf-8")
-    assert BEGIN in text and END in text, "REPORT.md must embed the generated table"
-    section = text.split(BEGIN, 1)[1].split(END, 1)[0]
-    lines = [line for line in section.strip().splitlines() if line.startswith("|")]
-    return "\n".join(lines) + "\n"
+def annotated_blocks(doc: Path):
+    text = doc.read_text(encoding="utf-8")
+    blocks = []
+    for match in TABLE_RE.finditer(text):
+        rel = match.group(1)
+        lines = "\n".join(line for line in match.group(2).strip().splitlines() if line.startswith("|")) + "\n"
+        blocks.append((rel, lines))
+    return blocks
 
 
-def test_fixture_table_matches_report():
-    regenerated = render_markdown_table(build_table(FIXTURE))
-    assert embedded_table() == regenerated
+@pytest.mark.parametrize("doc", [REPORT, README])
+def test_embedded_tables_match_regeneration(doc):
+    blocks = annotated_blocks(doc)
+    assert blocks, f"{doc.name} embeds no report tables"
+    for rel, embedded in blocks:
+        results_dir = (ROOT / rel) if rel else FIXTURE
+        assert embedded == render_markdown_table(build_table(results_dir)), f"{doc.name}: {rel} drifted"
 
 
 def test_fixture_declares_itself_as_fixture():
+    import json
+
     for run_dir in FIXTURE.iterdir():
-        meta = __import__("json").loads((run_dir / "run.json").read_text(encoding="utf-8"))
+        meta = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
         assert meta["fixture"] is True, f"{run_dir.name} is not marked as a fixture"
         assert meta["environment"]["fixture"] is True
+
+
+def test_campaign_is_a_real_run_not_a_fixture():
+    import json
+
+    metas = []
+    for run_dir in CAMPAIGN.iterdir():
+        meta = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+        assert meta["fixture"] is False, f"{run_dir.name} must not be marked as a fixture"
+        metas.append(meta)
+    assert len(metas) >= 2
 
 
 def test_fixture_loads_increase_monotonically():
@@ -42,3 +61,9 @@ def test_offering_more_than_the_server_serves_breaks_ttft():
     lowest = min(rows.values(), key=lambda r: r["offered_rps"])
     highest = max(rows.values(), key=lambda r: r["offered_rps"])
     assert highest["ttft_p95_ms"] > lowest["ttft_p95_ms"]
+
+
+def test_campaign_goodput_is_a_fraction():
+    for row in build_table(CAMPAIGN):
+        assert 0.0 <= row["goodput_fraction"] <= 1.0
+        assert row["requests"] > 0
