@@ -2,8 +2,8 @@
   "name": "cpu-load-1rps",
   "model": "llama3.2:1b",
   "base_url": "http://127.0.0.1:11436",
-  "started_at": "2026-10-29T17:11:50.383676+00:00",
-  "wall_s": 130.310613,
+  "started_at": "2026-11-01T18:33:07+01:00",
+  "wall_s": 22.8258,
   "fixture": false,
   "config": {
     "name": "cpu-load-1rps",
@@ -35,11 +35,12 @@
     "python": "3.11.16",
     "platform": "Linux-7.2.11-200.fc44.x86_64-x86_64-with-glibc2.43",
     "cpu": "AMD Ryzen 9 7900X 12-Core Processor",
-    "cuda": null,
-    "vllm": null,
+    "cuda": "12.8",
+    "vllm": "0.10.2",
     "fixture": false,
     "gpu": "NVIDIA GeForce RTX 3090",
-    "driver": "615.78.08"
+    "driver": "615.78.08",
+    "torch": "2.8.0"
   },
   "requests": 16
 }

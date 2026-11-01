@@ -20,42 +20,63 @@ a stated SLO, and cost per million output tokens.
 
 ## Does it work?
 
-Yes, and it has been run for real. The table below is a campaign against an
-actual model: llama3.2:1b served by llama.cpp on 8 CPU cores of a shared
-12-core box (the GPU was under a research lease, so the CPU-only server build
-was used; it cannot see the GPU). Arrivals are the same seeded Poisson
-schedule as everywhere else in the repo, 16 requests per configuration, 2
-repetitions, answers capped at 120 tokens, short and medium prompts only. The
-full sweep file is `configs/sweep.cpu.yaml`, and every raw row with the
-machine metadata is committed under `results/qwen32-1b-cpu/`. This is a small
-model on contended CPU, so read the numbers as harness validation, not as
-serving guidance.
+Yes, and it has been run for real on both sides of the question: a full sweep on
+one GPU with vLLM, and a second sweep on the CPU-only fallback. Every row below
+is regenerated from committed raw rows, and the test suite fails if the tables
+drift from them.
+
+### The GPU campaign
+
+Qwen2.5-7B-Instruct-AWQ on one RTX 3090 with vLLM 0.10.2, max-model-len 4096,
+up to 32 concurrent sequences, 120 requests per configuration with 2
+repetitions, the interactive SLO from REPORT.md (0.75 s TTFT, 0.10 s per output
+token), five configurations including one with the KV budget halved. 1200
+requests total, zero errors, on 2026-11-01.
+
+<!-- report-table:results/qwen25-7b-awq-3090 -->
+| run | offered_rps | requests | ttft_p50_ms | ttft_p95_ms | tpot_p50_ms | tpot_p95_ms | output_tokens_per_s | goodput_rps | goodput_fraction | cost_per_million_output_tokens |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| gpu-load-1rps | 1 | 240 | 20.61 | 26.9 | 8.21 | 8.73 | 169.9 | 0.953 | 1 | 0.65 |
+| gpu-load-2rps | 2 | 240 | 21.92 | 27.71 | 8.45 | 9.07 | 326 | 1.833 | 1 | 0.34 |
+| gpu-load-4rps | 4 | 240 | 24.62 | 30.48 | 8.9 | 10.2 | 603.8 | 3.402 | 1 | 0.18 |
+| gpu-load-8rps | 8 | 240 | 31.44 | 42.04 | 13.2 | 15.13 | 1050.5 | 5.896 | 1 | 0.11 |
+| gpu-load-8rps-kv0.45 | 8 | 240 | 30.83 | 44.25 | 13.4 | 15.13 | 1023.5 | 5.743 | 1 | 0.11 |
+<!-- /report-table -->
+
+What it shows: from 1 to 8 offered requests per second the server scales from
+170 to 1050 output tokens per second while p95 time-to-first-token moves from 27
+to 42 ms and p95 inter-token time from 8.7 to 15.1 ms. Even at 8 offered rps
+every completed request met the interactive SLO; what falls is the achieved
+rate, 5.9 rps against 8 offered, which is the saturation signal an open-loop
+client with 32 slots can show without violating latency. The halved-KV
+configuration lands within noise of the full one (1024 vs 1050 tokens per
+second), so at 4096 context this workload never pressures the cache; that
+comparison needs long contexts to say anything.
+
+### The CPU campaign
+
+llama3.2:1b served by llama.cpp on 8 CPU cores of a shared 12-core box, niced,
+4 parallel slots, CPU-only build. Four offered loads, short and medium prompts,
+answers capped at 120 tokens, the relaxed CPU SLO (20 s TTFT, 2.5 s TPOT).
 
 <!-- report-table:results/qwen32-1b-cpu -->
 | run | offered_rps | requests | ttft_p50_ms | ttft_p95_ms | tpot_p50_ms | tpot_p95_ms | output_tokens_per_s | goodput_rps | goodput_fraction | cost_per_million_output_tokens |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| cpu-load-0.1rps | 0.1 | 16 | 84.01 | 324.31 | 76.78 | 107.04 | 8.7 | 0.09 | 1 | 19.13 |
-| cpu-load-0.25rps | 0.25 | 16 | 108.74 | 154.61 | 79.67 | 95.5 | 11.1 | 0.118 | 1 | 15 |
-| cpu-load-0.5rps | 0.5 | 16 | 82.75 | 145.1 | 67.7 | 80.7 | 13.1 | 0.135 | 1 | 12.68 |
-| cpu-load-1rps | 1 | 16 | 104.3 | 145.72 | 79.33 | 89.5 | 11.7 | 0.123 | 1 | 14.2 |
+| cpu-load-0.1rps | 0.1 | 16 | 69.88 | 279.46 | 31.47 | 34.33 | 11.8 | 0.121 | 1 | 14.09 |
+| cpu-load-0.25rps | 0.25 | 16 | 53.54 | 70.49 | 31.56 | 33.88 | 26.4 | 0.271 | 1 | 6.31 |
+| cpu-load-0.5rps | 0.5 | 16 | 60.88 | 111.02 | 32.76 | 58.5 | 44.2 | 0.458 | 1 | 3.77 |
+| cpu-load-1rps | 1 | 16 | 67.93 | 172.54 | 33.51 | 40.97 | 68.3 | 0.701 | 1 | 2.44 |
 <!-- /report-table -->
 
-What the campaign shows: at these answer sizes a request occupies a slot for
-roughly 7-9 seconds, four slots give a capacity near 0.5 requests per second,
-and offered load past that stops changing per-request latency because the
-client-side concurrency cap absorbs the excess; the saturation signal is the
-aggregate throughput plateau around 12-13 output tokens per second and the
-wall clock stretching well past the arrival window. A GPU-side campaign with a
-7B-class model, continuous batching, and KV cache pressure is the real target
-and is still queued behind the research lease.
+Throughput scales 11.8 to 68.3 output tokens per second as the four slots fill,
+then the achieved rate stops keeping up with offered load (0.70 rps achieved at
+1 rps offered), which is the capacity limit of this box.
 
-The pipeline itself is additionally proven end to end on a simulated server,
-committed under `results/fixture/`. The stub owns one serving slot, charges
-prefill by prompt length and decode by token, so queueing behavior emerges
-from the schedule instead of being scripted. Its numbers are not model
-measurements and are labeled `fixture: true` in every metadata file. Both
-tables are regenerated by `make report` and checked by `make report-check`
-and the test suite, so they cannot drift from the committed data.
+### The pipeline fixture
+
+The same harness also runs against a simulated server, committed under
+`results/fixture/`, so the report and its tests work with no model at all. Its
+rows are labeled `fixture: true` and are not measurements.
 
 ## How to run
 
@@ -81,10 +102,11 @@ are committed.
 
 ## What is not done yet
 
-- TODO: rerun the sweep against a 7B-class model on the GPU when the research
-  lease frees the card. the principle is lowkey the same so ... yeah, this
-  CPU run proves the pipeline and the 7B pass is mostly waiting on hardware.
-  Until then the GPU numbers here are expectations, not measurements.
+- KV cache pressure is untested: at 4096 context the halved cache changed
+  nothing, so the next campaign needs long contexts, more sequences, and a
+  preemption count to say anything about eviction.
+- One model, one GPU. No multi-GPU tensor parallelism, no quantisation
+  comparison (AWQ only), no prefix caching experiment.
 - The runner drives one endpoint at a time; it does not sweep server-side
   flags like `--gpu-memory-utilization` itself, the KV cache fraction is
   recorded per run and the server is restarted between runs by hand.

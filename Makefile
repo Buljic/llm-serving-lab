@@ -8,6 +8,7 @@ test:
 report:
 	PYTHONPATH=. $(PY) analysis/report.py --results results/fixture --out analysis/out
 	PYTHONPATH=. $(PY) analysis/report.py --results results/qwen32-1b-cpu --out analysis/out
+	PYTHONPATH=. $(PY) analysis/report.py --results results/qwen25-7b-awq-3090 --out analysis/out
 
 report-check:
 	PYTHONPATH=. $(PY) analysis/report.py --results results/fixture --out analysis/out --check

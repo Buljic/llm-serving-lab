@@ -1,0 +1,31 @@
+# GPU campaign, 2026-11-02. Qwen2.5-7B-Instruct-AWQ on one RTX 3090 with vLLM
+# 0.10.2, max-model-len 4096, up to 32 concurrent sequences. The interactive
+# SLO from REPORT.md applies: 0.75 s TTFT and 0.10 s per output token.
+shared:
+  model: Qwen/Qwen2.5-7B-Instruct-AWQ
+  base_url: http://127.0.0.1:8011
+  request_count: 120
+  warmup_requests: 8
+  repetitions: 2
+  seed: 11
+  max_concurrent: 32
+  gpu_cost_per_hour_usd: 0.40
+  device_note: RTX 3090 24GB, vLLM 0.10.2, AWQ, kv fraction 0.9, 32 sequences
+  slo:
+    max_ttft_s: 0.75
+    max_tpot_s: 0.10
+
+runs:
+  - name: gpu-load-1rps
+    arrival_rate_rps: 1.0
+  - name: gpu-load-2rps
+    arrival_rate_rps: 2.0
+  - name: gpu-load-4rps
+    arrival_rate_rps: 4.0
+  - name: gpu-load-8rps
+    arrival_rate_rps: 8.0
+  - name: gpu-load-8rps-kv0.45
+    arrival_rate_rps: 8.0
+    # served with --gpu-memory-utilization 0.45, so the KV cache is smaller;
+    # compare against gpu-load-8rps at the same load with a 0.9 cache
+    kv_cache_fraction: 0.45

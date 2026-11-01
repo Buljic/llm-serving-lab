@@ -34,7 +34,7 @@ ROOT = Path(__file__).resolve().parent.parent
 FIXTURE_DIR = ROOT / "results" / "fixture"
 
 LOADS = (0.5, 1.0, 2.0, 4.0)
-SYNTHETIC_DATE = "2026-09-05T19:30:00+00:00"
+SYNTHETIC_DATE = "2026-09-02T18:47:00+02:00"
 
 
 def main() -> None:

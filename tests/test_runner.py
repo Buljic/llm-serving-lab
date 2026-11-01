@@ -118,3 +118,23 @@ def test_max_tokens_cap_must_be_positive(tmp_path):
     config = make_config(max_tokens_cap=0)
     with pytest.raises(ConfigError):
         run(config, tmp_path, prompts_path=PROMPTS, transport_factory=stub_factory())
+
+
+def test_requests_overlap_instead_of_serializing(tmp_path):
+    import time
+
+    class SlowStub:
+        def stream(self, payload, arrival_s=None):
+            time.sleep(0.25)
+            yield json.dumps(
+                {"choices": [{"delta": {"content": "ok"}, "finish_reason": "stop"}],
+                 "usage": {"completion_tokens": 1}}
+            )
+            yield "[DONE]"
+
+    config = make_config(request_count=4, arrival_rate_rps=100.0, max_concurrent=4, repetitions=1)
+    started = time.monotonic()
+    run(config, tmp_path, prompts_path=PROMPTS, transport_factory=lambda: SlowStub())
+    elapsed = time.monotonic() - started
+    # serial execution would need a full second for four 0.25 s requests
+    assert elapsed < 0.8

@@ -4,6 +4,7 @@ __pycache__/
 .pytest_cache/
 # raw campaign output; the summarized campaign run is committed under results/qwen32-1b-cpu/
 results/campaign/
+results/gpu-campaign/
 analysis/out/
 *.egg-info/
 dist/

@@ -180,12 +180,15 @@ async def _drive_once(
             if config.max_tokens_cap is None
             else min(prompt.max_tokens, config.max_tokens_cap)
         )
-        result = client.run(
-            request_id=f"{config.name}-r{rep}-{seq}",
-            prompt=prompt.prompt,
-            max_tokens=max_tokens,
-            prompt_id=prompt.id,
-            arrival_s=(t0 + arrival_offset_s) if virtual else None,
+        # the client is synchronous, so it must not run on the event loop: one
+        # blocking stream would serialize every other request in flight
+        result = await asyncio.to_thread(
+            client.run,
+            f"{config.name}-r{rep}-{seq}",
+            prompt.prompt,
+            max_tokens,
+            prompt.id,
+            (t0 + arrival_offset_s) if virtual else None,
         )
         return result.to_row()
 
