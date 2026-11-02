@@ -31,7 +31,7 @@ divided by output tokens.
 Per request the client records time to first token, per-token inter-token
 times, total latency, output tokens and finish reason. Aggregation uses linear
 interpolation percentiles over successful requests. Goodput is the rate of
-requests meeting the SLO, which is a harsher and more honest number than raw
+requests meeting the SLO, which is a harsher number than raw
 completion rate. The runner refuses to start a configuration with zero
 requests or no SLO, because both would produce numbers that look meaningful
 and are not.
@@ -117,7 +117,7 @@ token. Its rows are labeled `fixture: true` and are not measurements.
   contexts and more sequences than this campaign used.
 - The client holds at most 32 requests in flight, so above the server's
   capacity the offered load shows up as a growing client-side queue; achieved
-  request rate is the honest saturation signal, not latency alone.
+  request rate is the saturation signal, not latency alone.
 - The CPU campaign used a 1B model on a shared, contended box with a relaxed
   SLO; it validates the harness and the box capacity, not a serving config.
 - Long prompts were excluded from the CPU run because their answers take
